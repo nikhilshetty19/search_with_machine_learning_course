@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
 import csv
+import sys
 
 # Useful if you want to perform stemming.
 import nltk
@@ -47,10 +48,36 @@ parents_df = pd.DataFrame(list(zip(categories, parents)), columns =['category', 
 # Read the training data into pandas, only keeping queries with non-root categories in our category tree.
 queries_df = pd.read_csv(queries_file_name)[['category', 'query']]
 queries_df = queries_df[queries_df['category'].isin(categories)]
+count_df = queries_df.groupby('category').size()
+min_value = count_df.min()
+
 
 # IMPLEMENT ME: Convert queries to lowercase, and optionally implement other normalization, like stemming.
+queries_df['query'] = queries_df['query'].str.lower()
+queries_df['query'] = queries_df['query'].str.replace('\W',' ', regex=True)
+queries_df['query'] = queries_df['query'].str.replace('\_',' ', regex=True)
+queries_df['query'] = queries_df['query'].replace(r'\s+',' ', regex=True)
+def stem_sentences(sentence):
+    tokens = sentence.split()
+    stemmed_tokens = [stemmer.stem(token) for token in tokens]
+    return ' '.join(stemmed_tokens)
+queries_df['query'] = queries_df['query'].apply(stem_sentences)
 
 # IMPLEMENT ME: Roll up categories to ancestors to satisfy the minimum number of queries per category.
+count_df = queries_df.groupby('category').size()
+min_value = count_df.min()
+print(min_value)
+while min_value < min_queries:
+    categ = count_df.index[count_df.argmin()]
+    parent = parents_df.loc[parents_df['category'] == categ,'parent'].iloc[0]
+    #print(categ)
+    #print(parent)
+    #print(queries_df[queries_df['category']==categ])
+    queries_df['category'] = queries_df['category'].replace([categ], parent)
+    #print(queries_df[queries_df['category']==categ])
+    count_df = queries_df.groupby('category').size()
+    min_value = count_df.min()
+    print(min_value)
 
 # Create labels in fastText format.
 queries_df['label'] = '__label__' + queries_df['category']
