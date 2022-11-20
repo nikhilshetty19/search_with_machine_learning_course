@@ -15,6 +15,8 @@ import sys
 import fasttext
 import nltk
 stemmer = nltk.stem.PorterStemmer()
+from sentence_transformers import SentenceTransformer
+s_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -22,6 +24,20 @@ logging.basicConfig(format='%(levelname)s:%(message)s')
 
 model = fasttext.load_model("/workspace/datasets/fasttext/model_labelling_queries.bin")
 category_threshold = 0.3
+
+def create_vector_query(user_query,results=15):
+    embedding = s_model.encode(user_query)
+    query_obj = {
+        "query": {
+            "knn": {
+                "embedding": {
+                    "vector": embedding,
+                    "k": results
+                }
+            }
+        }
+    }
+    return query_obj
 
 # expects clicks and impressions to be in the row
 def create_prior_queries_from_group(
@@ -251,6 +267,13 @@ def search(client, user_query, index="bbuy_products", sort="_score", sortDir="de
         hits = response['hits']['hits']
         print(json.dumps(response, indent=2))
 
+def vector_search(client, user_query, index="bbuy_products"):
+    query_obj = create_vector_query(user_query)
+    logging.info(query_obj)
+    response = client.search(query_obj, index=index)
+    if response and response['hits']['hits'] and len(response['hits']['hits']) > 0:
+        hits = response['hits']['hits']
+        print(json.dumps(response, indent=2))
 
 if __name__ == "__main__":
     host = 'localhost'
@@ -267,7 +290,8 @@ if __name__ == "__main__":
     general.add_argument('--user',
                          help='The OpenSearch admin.  If this is set, the program will prompt for password too. If not set, use default of admin/admin')
     general.add_argument("--should_boost_categories", action=argparse.BooleanOptionalAction, help="Whether to use categories for boosting or filtering")
-
+    general.add_argument('--vector', action='store_true', 
+                        help='If this is set, the program will do vector search')
     args = parser.parse_args()
 
     if len(vars(args)) == 0:
@@ -300,6 +324,8 @@ if __name__ == "__main__":
         query = line.rstrip()
         if query == "Exit":
             break
-        search(client=opensearch, user_query=query, index=index_name, should_boost_categories=args.should_boost_categories)
-
+        if args.vector:
+            vector_search(client=opensearch, user_query=query, index=index_name)
+        else:
+            search(client=opensearch, user_query=query, index=index_name, should_boost_categories=args.should_boost_categories)
         print(query_prompt)
